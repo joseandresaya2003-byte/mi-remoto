@@ -116,6 +116,10 @@
     max-width: 100%; max-height: 100%; outline: none; cursor: default;
     box-shadow: 0 0 40px rgba(0,0,0,.6); image-rendering: auto;
   }
+  #kbd {
+    position: fixed; left: 0; bottom: 0; width: 2px; height: 2px;
+    opacity: 0; border: 0; padding: 0; resize: none; font-size: 16px; /* 16px evita zoom en iPhone */
+  }
   #loading {
     position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
     align-items: center; justify-content: center; color: var(--muted);
@@ -182,13 +186,15 @@
       <option value="media" selected>Calidad: media</option>
       <option value="alta">Calidad: alta</option>
     </select>
+    <button class="tbtn" id="kbdBtn" title="Abrir teclado (celular)">⌨ Teclado</button>
     <button class="tbtn" id="fsBtn" title="Pantalla completa">⛶ Pantalla completa</button>
     <button class="tbtn danger" id="discBtn">✕ Desconectar</button>
   </div>
   <div id="stage">
     <div id="loading"><div class="spinner"></div><div>Esperando imagen del PC remoto…</div></div>
-    <canvas id="screen" tabindex="0"></canvas>
+    <canvas id="screen"></canvas>
   </div>
+  <textarea id="kbd" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Teclado remoto"></textarea>
 </section>
 
 <script>
@@ -247,12 +253,17 @@
       const m = JSON.parse(ev.data);
       if (m.type === "connected") {
         saveRecent(id);
+        agentV = 1; // hasta que el agente diga su versión
         $("remoteName").textContent = (m.name || "PC remoto") + " · " + fmtId(id);
         home.style.display = "none";
         session.style.display = "flex";
         loading.style.display = "flex";
-        canvas.focus();
+        focusKbd();
         sendQuality();
+      } else if (m.type === "agent-info") {
+        agentV = m.v || 1;
+      } else if (m.type === "pong") {
+        rtt = performance.now() - m.t;
       } else if (m.type === "error") {
         setMsg(m.message, "err");
         btn.disabled = false;
@@ -273,28 +284,49 @@
   });
 
   // ---------- Dibujar cada imagen recibida ----------
-  async function drawFrame(blob) {
-    try {
-      const bmp = await createImageBitmap(blob);
-      if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
-        canvas.width = bmp.width; canvas.height = bmp.height;
+  // Cada mensaje: 9 bytes de cabecera [tipo, x, y, ancho total, alto total] + JPEG.
+  // tipo 0 = pantalla completa, tipo 1 = solo el pedazo que cambió (se pinta en x,y).
+  let drawChain = Promise.resolve();
+  function drawFrame(blob) {
+    drawChain = drawChain.then(async () => {
+      try {
+        const h = new DataView(await blob.slice(0, 9).arrayBuffer());
+        let kind, x, y, fw, fh, bmp;
+        if (h.getUint8(0) === 0xff && h.getUint8(1) === 0xd8) {
+          // agente antiguo: JPEG completo sin cabecera
+          bmp = await createImageBitmap(blob);
+          kind = 0; x = 0; y = 0; fw = bmp.width; fh = bmp.height;
+        } else {
+          kind = h.getUint8(0); x = h.getUint16(1); y = h.getUint16(3);
+          fw = h.getUint16(5); fh = h.getUint16(7);
+          bmp = await createImageBitmap(blob.slice(9, blob.size, "image/jpeg"));
+        }
+        if (kind === 0 && (canvas.width !== fw || canvas.height !== fh)) {
+          canvas.width = fw; canvas.height = fh;
+        }
+        ctx.drawImage(bmp, x, y);
+        bmp.close();
+        loading.style.display = "none";
+        frames++; bytes += blob.size;
+      } catch (err) {
+        console.warn("frame", err);
+      } finally {
+        send({ type: "ack" }); // libera espacio para la siguiente imagen
       }
-      ctx.drawImage(bmp, 0, 0);
-      bmp.close();
-      loading.style.display = "none";
-      frames++; bytes += blob.size;
-    } finally {
-      send({ type: "ack" }); // pide la siguiente imagen
-    }
+    });
   }
+  let rtt = null;
   setInterval(() => {
-    stats.textContent = `${frames} fps · ${(bytes * 8 / 1e6).toFixed(1)} Mbps`;
+    const lat = rtt == null ? "" : ` · ${Math.round(rtt)} ms`;
+    stats.textContent = `${frames} fps · ${(bytes * 8 / 1e6).toFixed(1)} Mbps${lat}`;
     frames = 0; bytes = 0;
   }, 1000);
+  // Mide el retraso real (tu navegador -> servidor -> PC remoto -> de vuelta)
+  setInterval(() => send({ type: "ping", t: performance.now() }), 2000);
 
   const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
   const sendQuality = () => send({ type: "quality", value: $("quality").value });
-  $("quality").addEventListener("change", () => { sendQuality(); canvas.focus(); });
+  $("quality").addEventListener("change", () => { sendQuality(); focusKbd(); });
 
   // ---------- Mouse ----------
   function pos(e) {
@@ -312,7 +344,7 @@
     send({ type: "input", kind: "move", ...pos(e) });
   });
   canvas.addEventListener("mousedown", (e) => {
-    e.preventDefault(); canvas.focus();
+    e.preventDefault(); focusKbd();
     send({ type: "input", kind: "down", button: e.button, ...pos(e) });
   });
   canvas.addEventListener("mouseup", (e) => {
@@ -326,13 +358,71 @@
   }, { passive: false });
 
   // ---------- Teclado ----------
-  const keyHandler = (action) => (e) => {
-    if (e.key === "F11") return; // deja F11 al navegador
-    e.preventDefault();
-    send({ type: "input", kind: "key", action, key: e.key, code: e.code });
+  // - Letras, números y símbolos se envían como TEXTO (funciona con cualquier
+  //   distribución de teclado, tildes, ñ, @...).
+  // - Teclas especiales y atajos (Enter, flechas, Ctrl+C...) se envían como TECLAS.
+  // - En celular o con autocompletado llega texto sin teclas: lo captura el campo oculto.
+  const kbd = $("kbd");
+  const sessionOn = () => session.style.display === "flex";
+  function focusKbd() { if (sessionOn()) kbd.focus({ preventScroll: true }); }
+  let agentV = 1; // 1 = programa antiguo (solo teclas), 2 = entiende texto
+  const sendText = (text) => {
+    if (!text) return;
+    if (agentV >= 2) return send({ type: "input", kind: "text", text });
+    for (const ch of text) { // programa antiguo: se envía tecla por tecla
+      send({ type: "input", kind: "key", action: "down", key: ch, code: "" });
+      send({ type: "input", kind: "key", action: "up", key: ch, code: "" });
+    }
   };
-  canvas.addEventListener("keydown", keyHandler("down"));
-  canvas.addEventListener("keyup", keyHandler("up"));
+  const tapKey = (key, code) => {
+    send({ type: "input", kind: "key", action: "down", key, code });
+    send({ type: "input", kind: "key", action: "up", key, code });
+  };
+  const sentDown = new Set();
+
+  document.addEventListener("keydown", (e) => {
+    if (!sessionOn() || e.target === $("quality")) return;
+    if (e.key === "F11") return; // F11 queda para el navegador
+    if (e.isComposing || e.keyCode === 229 || e.key === "Process" || e.key === "Unidentified" || e.key === "Dead") return;
+    e.preventDefault();
+    if (e.key === "AltGraph") return;
+    const altgr = e.getModifierState && e.getModifierState("AltGraph");
+    const shortcut = e.ctrlKey || e.metaKey || e.altKey;
+    if (e.key.length === 1 && (altgr || !shortcut) && agentV >= 2) {
+      sendText(e.key);
+      return;
+    }
+    sentDown.add(e.code || e.key);
+    send({ type: "input", kind: "key", action: "down", key: e.key, code: e.code });
+  }, true);
+
+  document.addEventListener("keyup", (e) => {
+    if (!sessionOn()) return;
+    const id = e.code || e.key;
+    if (!sentDown.has(id)) return;
+    e.preventDefault();
+    sentDown.delete(id);
+    send({ type: "input", kind: "key", action: "up", key: e.key, code: e.code });
+  }, true);
+
+  // Texto que llega sin teclas (celular, dictado, autocompletar, IME)
+  kbd.addEventListener("beforeinput", (e) => {
+    if (e.inputType === "deleteContentBackward") { e.preventDefault(); tapKey("Backspace", "Backspace"); }
+    else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") { e.preventDefault(); tapKey("Enter", "Enter"); }
+  });
+  kbd.addEventListener("input", (e) => {
+    if (e.isComposing) return;
+    sendText(kbd.value);
+    kbd.value = "";
+  });
+  kbd.addEventListener("compositionend", () => { sendText(kbd.value); kbd.value = ""; });
+
+  // Si se pierde el foco (ej. al cambiar de pestaña), suelta las teclas presionadas
+  window.addEventListener("blur", () => {
+    sentDown.forEach((id) => send({ type: "input", kind: "key", action: "up", key: id, code: id }));
+    sentDown.clear();
+  });
+  $("kbdBtn").onclick = () => focusKbd();
 
   // ---------- Descarga: comprueba antes que el programa exista ----------
   $("dlBtn").addEventListener("click", async (e) => {
@@ -352,7 +442,7 @@
   $("fsBtn").onclick = () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else session.requestFullscreen();
-    canvas.focus();
+    focusKbd();
   };
 })();
 </script>
