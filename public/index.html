@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MiRemoto · Escritorio remoto</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥️</text></svg>" />
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.12);
+    --text: #e8ecf8;
+    --muted: #9aa4c0;
+    --accent: #ef4444;
+    --accent2: #f97316;
+    --ok: #22c55e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: var(--text);
+    background: radial-gradient(1200px 600px at 10% -10%, #3b1d4a 0%, transparent 60%),
+                radial-gradient(900px 500px at 110% 10%, #4a1d1d 0%, transparent 55%),
+                var(--bg);
+    overflow: hidden;
+  }
+
+  /* ---------- Pantalla de inicio ---------- */
+  #home {
+    height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; gap: 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .logo {
+    width: 56px; height: 56px; border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: grid; place-items: center; font-size: 28px;
+    box-shadow: 0 10px 30px rgba(239,68,68,.35);
+  }
+  .brand h1 { font-size: 30px; letter-spacing: .5px; }
+  .brand p { color: var(--muted); font-size: 14px; }
+
+  .card {
+    width: 100%; max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .card h2 { font-size: 18px; margin-bottom: 4px; }
+  .card .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+  input {
+    width: 100%; padding: 14px 16px; border-radius: 12px;
+    border: 1px solid var(--border); background: rgba(0,0,0,.25);
+    color: var(--text); font-size: 18px; outline: none; transition: border .2s, box-shadow .2s;
+  }
+  input:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(249,115,22,.25); }
+  #idInput { font-family: Consolas, monospace; letter-spacing: 3px; font-size: 22px; }
+  button.primary {
+    width: 100%; margin-top: 24px; padding: 14px; border: 0; border-radius: 12px;
+    font-size: 16px; font-weight: 600; color: white; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    box-shadow: 0 10px 25px rgba(239,68,68,.35);
+    transition: transform .1s, filter .2s;
+  }
+  button.primary:hover { filter: brightness(1.1); }
+  button.primary:active { transform: scale(.98); }
+  button.primary:disabled { opacity: .6; cursor: wait; }
+  .msg { margin-top: 14px; font-size: 14px; min-height: 20px; text-align: center; }
+  .msg.err { color: #fca5a5; }
+  .msg.info { color: var(--muted); }
+  .steps { display: flex; gap: 16px; color: var(--muted); font-size: 13px; flex-wrap: wrap; justify-content: center; }
+  .steps span b { color: var(--text); }
+  .recent { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-family: Consolas, monospace; font-size: 13px; padding: 6px 10px; border-radius: 999px;
+    background: rgba(255,255,255,.08); border: 1px solid var(--border); cursor: pointer; color: var(--text);
+  }
+  .chip:hover { background: rgba(255,255,255,.15); }
+
+  /* ---------- Sesión remota ---------- */
+  #session { display: none; height: 100%; flex-direction: column; background: #05070d; }
+  .toolbar {
+    height: 48px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px;
+    background: rgba(20,24,40,.95); border-bottom: 1px solid var(--border);
+  }
+  .toolbar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .toolbar .title { font-weight: 600; }
+  .toolbar .stat { color: var(--muted); font-size: 13px; font-family: Consolas, monospace; }
+  .toolbar .spacer { flex: 1; }
+  .tbtn {
+    background: rgba(255,255,255,.08); border: 1px solid var(--border); color: var(--text);
+    padding: 7px 12px; border-radius: 9px; cursor: pointer; font-size: 13px;
+  }
+  .tbtn:hover { background: rgba(255,255,255,.16); }
+  .tbtn.danger { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.5); }
+  select.tbtn option { background: #141828; }
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+  #screen {
+    max-width: 100%; max-height: 100%; outline: none; cursor: default;
+    box-shadow: 0 0 40px rgba(0,0,0,.6); image-rendering: auto;
+  }
+  #loading {
+    position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
+    align-items: center; justify-content: center; color: var(--muted);
+  }
+  .spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,.15); border-top-color: var(--accent2);
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ================= INICIO ================= -->
+<section id="home">
+  <div class="brand">
+    <div class="logo">🖥️</div>
+    <div>
+      <h1>MiRemoto</h1>
+      <p>Tu propio escritorio remoto, desde el navegador</p>
+    </div>
+  </div>
+
+  <form class="card" id="connectForm" autocomplete="off">
+    <h2>Conectarse a un PC</h2>
+    <p class="sub">Escribe el ID y la contraseña que aparecen en el agente del otro PC.</p>
+
+    <label for="idInput">ID del PC remoto</label>
+    <input id="idInput" inputmode="numeric" placeholder="123 456 789" maxlength="11" required />
+
+    <label for="passInput">Contraseña</label>
+    <input id="passInput" type="password" placeholder="••••••" required />
+
+    <button class="primary" id="connectBtn" type="submit">Conectar</button>
+    <div class="msg" id="msg"></div>
+    <div class="recent" id="recent"></div>
+  </form>
+
+  <div class="steps">
+    <span><b>1.</b> Abre el agente en el otro PC</span>
+    <span><b>2.</b> Copia su ID y contraseña</span>
+    <span><b>3.</b> Conéctate aquí</span>
+  </div>
+</section>
+
+<!-- ================= SESIÓN ================= -->
+<section id="session">
+  <div class="toolbar">
+    <div class="dot"></div>
+    <div class="title" id="remoteName">PC remoto</div>
+    <div class="stat" id="stats">— fps</div>
+    <div class="spacer"></div>
+    <select class="tbtn" id="quality" title="Calidad de imagen">
+      <option value="baja">Calidad: baja (rápido)</option>
+      <option value="media" selected>Calidad: media</option>
+      <option value="alta">Calidad: alta</option>
+    </select>
+    <button class="tbtn" id="fsBtn" title="Pantalla completa">⛶ Pantalla completa</button>
+    <button class="tbtn danger" id="discBtn">✕ Desconectar</button>
+  </div>
+  <div id="stage">
+    <div id="loading"><div class="spinner"></div><div>Esperando imagen del PC remoto…</div></div>
+    <canvas id="screen" tabindex="0"></canvas>
+  </div>
+</section>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const home = $("home"), session = $("session");
+  const form = $("connectForm"), idInput = $("idInput"), passInput = $("passInput");
+  const btn = $("connectBtn"), msg = $("msg");
+  const canvas = $("screen"), ctx = canvas.getContext("2d");
+  const loading = $("loading"), stats = $("stats");
+
+  let ws = null;
+  let frames = 0, bytes = 0;
+
+  // ---------- Formato bonito del ID: 123 456 789 ----------
+  const fmtId = (v) => v.replace(/\D/g, "").slice(0, 9).replace(/(\d{3})(?=\d)/g, "$1 ");
+  idInput.addEventListener("input", () => (idInput.value = fmtId(idInput.value)));
+
+  // ---------- IDs recientes (guardados en este navegador) ----------
+  const getRecent = () => JSON.parse(localStorage.getItem("recentIds") || "[]");
+  function renderRecent() {
+    const box = $("recent");
+    box.innerHTML = "";
+    getRecent().forEach((id) => {
+      const c = document.createElement("span");
+      c.className = "chip";
+      c.textContent = fmtId(id);
+      c.onclick = () => { idInput.value = fmtId(id); passInput.focus(); };
+      box.appendChild(c);
+    });
+  }
+  function saveRecent(id) {
+    const list = [id, ...getRecent().filter((x) => x !== id)].slice(0, 5);
+    localStorage.setItem("recentIds", JSON.stringify(list));
+  }
+  renderRecent();
+
+  const setMsg = (text, kind = "info") => { msg.textContent = text; msg.className = "msg " + kind; };
+
+  // ---------- Conectar ----------
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const id = idInput.value.replace(/\D/g, "");
+    if (id.length < 6) return setMsg("El ID debe tener 9 números", "err");
+    btn.disabled = true;
+    setMsg("Conectando…");
+
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    ws = new WebSocket(proto + location.host);
+    ws.binaryType = "blob";
+
+    ws.onopen = () => ws.send(JSON.stringify({ type: "connect", id, password: passInput.value }));
+
+    ws.onmessage = async (ev) => {
+      if (typeof ev.data !== "string") return drawFrame(ev.data);
+      const m = JSON.parse(ev.data);
+      if (m.type === "connected") {
+        saveRecent(id);
+        $("remoteName").textContent = (m.name || "PC remoto") + " · " + fmtId(id);
+        home.style.display = "none";
+        session.style.display = "flex";
+        loading.style.display = "flex";
+        canvas.focus();
+        sendQuality();
+      } else if (m.type === "error") {
+        setMsg(m.message, "err");
+        btn.disabled = false;
+      }
+    };
+
+    ws.onclose = () => {
+      btn.disabled = false;
+      if (session.style.display === "flex") {
+        session.style.display = "none";
+        home.style.display = "flex";
+        if (!msg.classList.contains("err")) setMsg("Sesión terminada", "info");
+      } else if (!msg.textContent || msg.textContent === "Conectando…") {
+        setMsg("No se pudo conectar con el servidor", "err");
+      }
+      if (document.fullscreenElement) document.exitFullscreen();
+    };
+  });
+
+  // ---------- Dibujar cada imagen recibida ----------
+  async function drawFrame(blob) {
+    try {
+      const bmp = await createImageBitmap(blob);
+      if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
+        canvas.width = bmp.width; canvas.height = bmp.height;
+      }
+      ctx.drawImage(bmp, 0, 0);
+      bmp.close();
+      loading.style.display = "none";
+      frames++; bytes += blob.size;
+    } finally {
+      send({ type: "ack" }); // pide la siguiente imagen
+    }
+  }
+  setInterval(() => {
+    stats.textContent = `${frames} fps · ${(bytes * 8 / 1e6).toFixed(1)} Mbps`;
+    frames = 0; bytes = 0;
+  }, 1000);
+
+  const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+  const sendQuality = () => send({ type: "quality", value: $("quality").value });
+  $("quality").addEventListener("change", () => { sendQuality(); canvas.focus(); });
+
+  // ---------- Mouse ----------
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    };
+  }
+  let lastMove = 0;
+  canvas.addEventListener("mousemove", (e) => {
+    const now = performance.now();
+    if (now - lastMove < 16) return; // máx ~60 movimientos/seg
+    lastMove = now;
+    send({ type: "input", kind: "move", ...pos(e) });
+  });
+  canvas.addEventListener("mousedown", (e) => {
+    e.preventDefault(); canvas.focus();
+    send({ type: "input", kind: "down", button: e.button, ...pos(e) });
+  });
+  canvas.addEventListener("mouseup", (e) => {
+    e.preventDefault();
+    send({ type: "input", kind: "up", button: e.button, ...pos(e) });
+  });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    send({ type: "input", kind: "wheel", dy: Math.sign(e.deltaY), dx: Math.sign(e.deltaX) });
+  }, { passive: false });
+
+  // ---------- Teclado ----------
+  const keyHandler = (action) => (e) => {
+    if (e.key === "F11") return; // deja F11 al navegador
+    e.preventDefault();
+    send({ type: "input", kind: "key", action, key: e.key, code: e.code });
+  };
+  canvas.addEventListener("keydown", keyHandler("down"));
+  canvas.addEventListener("keyup", keyHandler("up"));
+
+  // ---------- Botones ----------
+  $("discBtn").onclick = () => ws && ws.close();
+  $("fsBtn").onclick = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else session.requestFullscreen();
+    canvas.focus();
+  };
+})();
+</script>
+</body>
+</html>
