@@ -158,7 +158,8 @@
   <div class="card download">
     <h2>¿Vas a recibir ayuda?</h2>
     <p class="sub">Descarga el programa, ábrelo y comparte tu ID y contraseña con quien te va a ayudar. No necesita instalación.</p>
-    <a class="secondary" href="/descargar" download>⬇ Descargar MiRemoto para Windows</a>
+    <a class="secondary" id="dlBtn" href="/descargar">⬇ Descargar MiRemoto para Windows</a>
+    <p class="msg err" id="dlMsg"></p>
     <p class="hint">Si Windows muestra "Windows protegió su PC", pulsa <b>Más información</b> → <b>Ejecutar de todas formas</b>.</p>
   </div>
 
@@ -332,6 +333,19 @@
   };
   canvas.addEventListener("keydown", keyHandler("down"));
   canvas.addEventListener("keyup", keyHandler("up"));
+
+  // ---------- Descarga: comprueba antes que el programa exista ----------
+  $("dlBtn").addEventListener("click", async (e) => {
+    e.preventDefault();
+    $("dlMsg").textContent = "";
+    try {
+      const r = await fetch("/descargar", { method: "HEAD" });
+      if (!r.ok) throw new Error();
+      location.href = "/descargar";
+    } catch {
+      $("dlMsg").textContent = "El programa no está disponible en este momento. Inténtalo más tarde.";
+    }
+  });
 
   // ---------- Botones ----------
   $("discBtn").onclick = () => ws && ws.close();
