@@ -33,6 +33,24 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     return res.end("ok");
   }
+  // Descarga del agente: sirve public/MiRemoto.exe, o redirige a DESCARGA_URL (p. ej. un Release de GitHub)
+  if (req.url.split("?")[0] === "/descargar") {
+    const exe = path.join(PUBLIC_DIR, "MiRemoto.exe");
+    if (fs.existsSync(exe)) {
+      res.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": 'attachment; filename="MiRemoto.exe"',
+        "Content-Length": fs.statSync(exe).size,
+      });
+      return fs.createReadStream(exe).pipe(res);
+    }
+    if (process.env.DESCARGA_URL) {
+      res.writeHead(302, { Location: process.env.DESCARGA_URL });
+      return res.end();
+    }
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    return res.end("El programa todavía no está disponible para descargar.");
+  }
   let urlPath = decodeURIComponent(req.url.split("?")[0]);
   if (urlPath === "/") urlPath = "/index.html";
   const filePath = path.normalize(path.join(PUBLIC_DIR, urlPath));

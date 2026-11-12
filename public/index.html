@@ -84,6 +84,16 @@
   }
   .chip:hover { background: rgba(255,255,255,.15); }
 
+  #home { overflow-y: auto; justify-content: safe center; }
+  .card.download { padding: 22px 28px; }
+  a.secondary {
+    display: block; text-align: center; text-decoration: none; padding: 13px; border-radius: 12px;
+    font-weight: 600; color: var(--text); background: rgba(255,255,255,.08); border: 1px solid var(--border);
+    transition: background .2s;
+  }
+  a.secondary:hover { background: rgba(255,255,255,.16); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 12px; text-align: center; }
+
   /* ---------- Sesión remota ---------- */
   #session { display: none; height: 100%; flex-direction: column; background: #05070d; }
   .toolbar {
@@ -145,10 +155,17 @@
     <div class="recent" id="recent"></div>
   </form>
 
+  <div class="card download">
+    <h2>¿Vas a recibir ayuda?</h2>
+    <p class="sub">Descarga el programa, ábrelo y comparte tu ID y contraseña con quien te va a ayudar. No necesita instalación.</p>
+    <a class="secondary" href="/descargar" download>⬇ Descargar MiRemoto para Windows</a>
+    <p class="hint">Si Windows muestra "Windows protegió su PC", pulsa <b>Más información</b> → <b>Ejecutar de todas formas</b>.</p>
+  </div>
+
   <div class="steps">
-    <span><b>1.</b> Abre el agente en el otro PC</span>
-    <span><b>2.</b> Copia su ID y contraseña</span>
-    <span><b>3.</b> Conéctate aquí</span>
+    <span><b>1.</b> El otro PC descarga y abre MiRemoto</span>
+    <span><b>2.</b> Te pasa su ID y contraseña</span>
+    <span><b>3.</b> Te conectas aquí</span>
   </div>
 </section>
 
